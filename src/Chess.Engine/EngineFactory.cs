@@ -3,7 +3,7 @@ using Chess.Engine;
 
 namespace Chess.Engine;
 
-// Factory pattern to create engine components (lesson: factory design pattern centralizes object creation).
+// Factory pattern to create engine components.
 public static class EngineFactory
 {
     public static (IMoveGenerator, IEvaluator, ISearchEngine) Create(string mode)
@@ -32,5 +32,3 @@ public static class EngineFactory
         return (gen, eval, engine);
     }
 }
-
-// Note: Factory pattern (lesson: factory), uses switch to decide subclass (polymorphism), promotes loose coupling by returning interfaces.

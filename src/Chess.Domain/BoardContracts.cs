@@ -1,6 +1,6 @@
 namespace Chess.Domain;
 
-// Interface for board (lessons: interfaces for polymorphism and flexible interactions).
+// Interface for board.
 public interface IBoard
 {
     Color SideToMove { get; }

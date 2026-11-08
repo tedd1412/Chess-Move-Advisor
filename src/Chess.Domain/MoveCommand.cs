@@ -1,6 +1,6 @@
 namespace Chess.Domain;
 
-// Command for moves (lesson: command design pattern).
+// Command for moves.
 public class MoveCommand : ICommand
 {
     private readonly Board _board; // Aggregation.

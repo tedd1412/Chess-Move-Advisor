@@ -1,6 +1,6 @@
 namespace Chess.Domain;
 
-// Interface for command pattern (lesson: command design pattern for reversible actions).
+// Interface for command pattern.
 public interface ICommand
 {
     void Execute();

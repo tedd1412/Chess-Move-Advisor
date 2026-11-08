@@ -4,18 +4,18 @@ using System.Diagnostics;
 
 namespace Chess.Domain;
 
-// This class represents the chessboard, encapsulating the state and behavior of the board (lessons: encapsulation, attributes and behaviors).
-// It uses private fields for data hiding and public methods/properties for controlled access (lessons: private/protected/public access, properties).
+// This class represents the chessboard, encapsulating the state and behavior of the board.
+// It uses private fields for data hiding and public methods/properties for controlled access.
 // The class handles special moves like castling and en passant, demonstrating abstraction by focusing on essential aspects.
 public sealed class Board : IBoard
 {
     // Private field to store board squares (encapsulation: prevents direct manipulation).
     private readonly Piece?[] _squares = new Piece?[64]; // null means empty square.
 
-    // Stack for move history, using composition to manage undo states (lesson: composition).
+    // Stack for move history, using composition to manage undo states.
     private readonly Stack<MoveState> _history = new();
 
-    // Public properties for board state (lessons: attributes, access modifiers).
+    // Public properties for board state.
     public Color SideToMove { get; private set; } = Color.White;
     public int HalfmoveClock { get; private set; } = 0;
     public int FullmoveNumber { get; private set; } = 1;
@@ -466,5 +466,3 @@ public sealed class Board : IBoard
         return new Piece(t, color);
     }
 }
-
-// Note: This class applies lessons like encapsulation (private fields, public properties), abstraction (FEN handling ignores unimportant details), high cohesion (all board-related logic in one class), loose coupling (interfaces for dependencies), polymorphism (move handling via flags), and exceptions for invalid FEN.

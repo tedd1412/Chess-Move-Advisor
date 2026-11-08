@@ -12,7 +12,7 @@ public sealed class AlphaBetaSearch : ISearchEngine
     private readonly bool _useQuiescence;
     private long _nodes;
 
-    // Constructor initializes object (lesson: constructor).
+    // Constructor initializes object.
     public AlphaBetaSearch(IMoveGenerator g, IEvaluator e, bool useQuiescence = true)
     {
         _gen = g;
