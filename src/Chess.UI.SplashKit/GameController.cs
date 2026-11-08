@@ -31,7 +31,6 @@ namespace Chess.UI.SplashKit
         // UI State
         private SearchResult? _lastSearch;
         private string _status = "Click a piece to select. Drag or click to move.";
-        private DomainColor _sideToMove = DomainColor.White;
         private int _searchDepth = 3;
 
         // Selection & dragging
@@ -51,8 +50,7 @@ namespace Chess.UI.SplashKit
         /// </summary>
         public GameController(string engineMode = "accurate")
         {
-            _generator = new SimpleMoveGenerator();     // temporarily use working generator
-            (_generator , _evaluator, _engine) = EngineFactory.Create(engineMode);
+            (_generator, _evaluator, _engine) = EngineFactory.Create(engineMode);
         }
 
         /// <summary>
@@ -87,7 +85,7 @@ namespace Chess.UI.SplashKit
                     draggingOverlay = (dp, SK.MouseX(), SK.MouseY());
 
                 _view.Draw(
-                    _window, _board, _lastSearch, _status, _sideToMove,
+                    _window, _board, _lastSearch, _status, _board.SideToMove,
                     _selectedSquare, targets, _dragFromSquare, draggingOverlay, _flipped
                 );
             }
@@ -106,7 +104,7 @@ namespace Chess.UI.SplashKit
                 if (valid)
                 {
                     var piece = _board.GetPieceAt(sq);
-                    if (piece is { } p && p.Color == _sideToMove)
+                    if (piece is { } p && p.Color == _board.SideToMove)
                     {
                         SelectSquare(sq);
                         _isDragging = true;
@@ -126,8 +124,8 @@ namespace Chess.UI.SplashKit
             {
                 if (_isDragging && _selectedSquare is int sel)
                 {
-                    var (sq, valid) = BoardView.SquareFromMouse();
-                    if (valid) TryMove(sel, sq);
+                    var (sq, valid) = BoardView.SquareFromMouse(_flipped);
+                    if (valid && sq != sel) TryMove(sel, sq); // releasing on the same square keeps the selection
                 }
                 _isDragging = false;
                 _dragPiece = null;
@@ -148,7 +146,7 @@ namespace Chess.UI.SplashKit
             if (SK.KeyTyped(KeyCode.XKey))
             {
                 _flipped = !_flipped;
-                _status = _flipped ? "View flipped: Black bottom." : "View flipped: White bottom.";
+                _status = _flipped ? "View: Black at the bottom." : "View: White at the bottom.";
             }
 
             if (SK.KeyTyped(KeyCode.SKey)) { _board.LoadStartPosition(); Reset(); _status = "Start position."; }
@@ -157,14 +155,14 @@ namespace Chess.UI.SplashKit
             // Side toggle
             if (SK.KeyTyped(KeyCode.WKey))
             {
-                _sideToMove = DomainColor.White; 
                 _board.SetSideToMove(DomainColor.White);
+                Reset();
                 _status = "Side to move: White.";
             }
             if (SK.KeyTyped(KeyCode.BKey))
             {
-                _sideToMove = DomainColor.Black;
                 _board.SetSideToMove(DomainColor.Black);
+                Reset();
                 _status = "Side to move: Black.";
             }
 
@@ -190,10 +188,8 @@ namespace Chess.UI.SplashKit
             {
                 if (_isDragging) { _status = "Finish the move before analysing."; return; }
 
-                var clone = _board.Clone(); // Command pattern ensures clone safety
-                var res = _engine.Analyse(clone, _searchDepth);
-                _lastSearch = res;
-                _status += $" | Best move: {Sq(res.BestMove.From)}→{Sq(res.BestMove.To)} ({(res.ScoreCp >= 0 ? "+" : "")}{res.ScoreCp}).";
+                _lastSearch = _engine.Analyse(_board.Clone(), _searchDepth); // never search the on-screen board
+                _status = DescribeResult(_lastSearch, "Best move");
             }
 
             // FEN utilities
@@ -243,14 +239,20 @@ namespace Chess.UI.SplashKit
             _board.MakeMove(move);
             _status = $"Moved {Sq(move.From)}→{Sq(move.To)}.";
             ClearSelection();
-            _sideToMove = _board.SideToMove;
+            _lastSearch = null; // the old analysis belonged to the previous position
+
+            Span<Move> replies = stackalloc Move[256];
+            if (_generator.GenerateMoves(_board, replies) == 0)
+            {
+                _status += _board.IsInCheck(_board.SideToMove) ? " Checkmate." : " Stalemate.";
+                return true;
+            }
+            if (_board.IsInCheck(_board.SideToMove)) _status += " Check.";
 
             if (_autoAnalyse)
             {
-                var clone = _board.Clone();
-                var res = _engine.Analyse(clone, _searchDepth);
-                _lastSearch = res;
-                _status += $" Best reply: {Sq(res.BestMove.From)}→{Sq(res.BestMove.To)} ({(res.ScoreCp >= 0 ? "+" : "")}{res.ScoreCp}).";
+                _lastSearch = _engine.Analyse(_board.Clone(), _searchDepth);
+                _status += " " + DescribeResult(_lastSearch, "Best reply");
             }
 
             return true;
@@ -276,7 +278,7 @@ namespace Chess.UI.SplashKit
         private void LoadFenFromInput()
         {
             _status = "Type/paste FEN then press Enter.";
-            _view.Draw(_window, _board, null, _status, _sideToMove);
+            _view.Draw(_window, _board, null, _status, _board.SideToMove);
 
             string fen = ReadLineFromKeyboard();
             if (!string.IsNullOrWhiteSpace(fen))
@@ -297,8 +299,9 @@ namespace Chess.UI.SplashKit
                 if (SK.KeyTyped(KeyCode.ReturnKey)) break;
                 if (SK.KeyTyped(KeyCode.EscapeKey)) return "";
 
+                bool shift = SK.KeyDown(KeyCode.LeftShiftKey) || SK.KeyDown(KeyCode.RightShiftKey);
                 for (KeyCode k = KeyCode.AKey; k <= KeyCode.ZKey; k++)
-                    if (SK.KeyTyped(k)) chars.Add((char)('a' + (int)(k - KeyCode.AKey)));
+                    if (SK.KeyTyped(k)) chars.Add((char)((shift ? 'A' : 'a') + (int)(k - KeyCode.AKey)));
 
                 if (SK.KeyTyped(KeyCode.SpaceKey)) chars.Add(' ');
                 if (SK.KeyTyped(KeyCode.SlashKey)) chars.Add('/');
@@ -310,10 +313,25 @@ namespace Chess.UI.SplashKit
                     chars.RemoveAt(chars.Count - 1);
 
                 _status = "FEN> " + new string(chars.ToArray());
-                _view.Draw(_window, _board, null, _status, _sideToMove);
+                _view.Draw(_window, _board, null, _status, _board.SideToMove);
             }
 
             return new string(chars.ToArray());
+        }
+
+        // Text for the status line. Scores are from the side to move's view.
+        private static string DescribeResult(SearchResult res, string label)
+        {
+            if (!res.HasBestMove)
+                return res.IsMate ? "Checkmate: no legal moves." : "Stalemate: no legal moves.";
+            return $"{label}: {Sq(res.BestMove.From)}→{Sq(res.BestMove.To)} ({FormatScore(res)}).";
+        }
+
+        internal static string FormatScore(SearchResult res)
+        {
+            if (!res.HasBestMove) return res.IsMate ? "checkmate" : "stalemate (draw)";
+            if (res.IsMate) return res.MateInMoves > 0 ? $"mate in {res.MateInMoves}" : $"mated in {-res.MateInMoves}";
+            return (res.ScoreCp >= 0 ? "+" : "") + res.ScoreCp;
         }
 
         private static string Sq(int sq)

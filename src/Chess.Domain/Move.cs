@@ -7,9 +7,6 @@ public readonly record struct Move(
     bool IsCapture = false,
     bool IsCastleKingSide = false,
     bool IsCastleQueenSide = false,
-    bool IsEnPassant = false)
-{
-    public bool IsWhiteMove { get; init; }
-}
+    bool IsEnPassant = false);
 
 // Note: Encapsulates move data (attributes), immutable for safety.

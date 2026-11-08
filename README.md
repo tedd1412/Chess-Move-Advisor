@@ -8,8 +8,10 @@ its score.
 
 **Highlights**
 
-- Full legal move generation, including special moves (covered by `SpecialMovesTests.cs`).
-- Alpha-beta search with iterative deepening and quiescence search, up to depth 5.
+- Full legal move generation, including castling, en passant and promotion, verified with
+  perft against the standard reference positions (`PerftTests.cs`).
+- Alpha-beta search with iterative deepening, MVV-LVA move ordering and quiescence search, up to
+  depth 5. Detects checkmate (reported as "mate in N"), stalemate and the fifty-move rule.
 - Two evaluators behind one interface: material only (*fast*) or material plus piece-square
   tables (*accurate*).
 - Layered design: domain model, engine and UI are separate projects, and the engine can be
@@ -32,6 +34,12 @@ cd <this-repo>/src/Chess.UI.SplashKit
 dotnet run
 ```
 
+**On Windows**, SplashKit's library is built with MSYS2's UCRT64 toolchain. If
+`C:\msys64\mingw64\bin` came first on `PATH`, Windows would load an incompatible `libstdc++` and
+fail with `DllNotFoundException ... The specified procedure could not be found`. To avoid that, the
+app puts `C:\msys64\ucrt64\bin` first on its own `PATH` at startup (`NativeLibrarySetup.cs`), so
+plain `dotnet run` works. If MSYS2 is not in `C:\msys64`, set `MSYS2_ROOT` to its folder.
+
 ### Run the tests
 
 From the repository root (the folder with `ChessAnalyser.sln`):
@@ -40,8 +48,9 @@ From the repository root (the folder with `ChessAnalyser.sln`):
 dotnet test
 ```
 
-The tests cover board set-up and FEN, move legality, special moves, and a quick search to check
-the engine returns a move.
+The tests cover board set-up and FEN, perft node counts on five reference positions, special
+moves, evaluator symmetry, and search behaviour (finding mate in one, reporting checkmate and
+stalemate, taking a hanging piece with either colour).
 
 ## How to use it
 
@@ -60,12 +69,13 @@ selection. Illegal moves are refused with a message in the status panel.
 | **C** | Clear the board |
 | **W** / **B** | Set the side to move: White / Black |
 | **F** | Print the position as FEN to the terminal |
-| **I** | Type a FEN string, then press Enter (Esc cancels); see the limitation below |
+| **I** | Type a FEN string (hold Shift for White's uppercase pieces), then press Enter (Esc cancels) |
 | **X** | Flip the board |
 | **Esc** | Quit |
 
 **Reading the analysis.** The panel shows the depth searched, the score in centipawns (100 =
-one pawn), the best move (for example `e2→e4`) and the number of
+one pawn) from the point of view of the side to move, or "mate in N" when a forced mate is found,
+the best move (for example `e2→e4`) and the number of
 positions searched.
 
 **Try it:** play a few opening moves (for example `e2→e4`, then `e7→e5`), set depth 4 with **4**,
@@ -96,6 +106,11 @@ Chess.Domain         Board · Move · MoveCommand · piece types
 - **Search.** `AlphaBetaSearch` deepens one ply at a time up to the chosen depth and prunes
   branches that cannot change the result. In *accurate* mode a quiescence search keeps going
   through captures at the end of a line, so the score is not taken in the middle of an exchange.
+  Moves are searched captures-first (most valuable victim, least valuable attacker), and the best
+  move from the previous depth is tried first.
+- **Evaluation.** Scores are always from the side to move's point of view, as negamax expects.
+  The *accurate* evaluator adds piece-square tables to material, so for example a knight in the
+  centre is worth more than one on the rim.
 
 ## Project structure
 
@@ -106,17 +121,18 @@ src/
   Chess.Engine/          move generators, evaluators, AlphaBetaSearch, EngineFactory
   Chess.UI.SplashKit/    Program.cs, GameController, BoardView, piece images, SplashKit wrapper
 tests/
-  Chess.Tests/           xUnit tests: board and engine, legality, special moves, search
+  Chess.Tests/           xUnit tests: perft, legality, special moves, evaluation, search
 ```
 
 ## Known limitations
 
-- Depth is capped at 5, and deeper searches get slow because there is no transposition table and
-  move ordering is minimal.
+- Depth is capped at 5. Deeper searches get slow because there is no transposition table and the
+  move generator checks legality by making each move and scanning for the king.
+- Draw by threefold repetition is not detected (it needs position hashing); stalemate and the
+  fifty-move rule are.
+- Promotion in the interface always chooses a queen.
 - No clock, game history panel or undo button in the interface.
-- FEN input from the keyboard only types lowercase letters, digits, `/`, `-` and spaces, so
-  positions with White pieces (uppercase in FEN) cannot be entered this way yet, and pasting is not
-  supported.
+- FEN input cannot be pasted; it has to be typed.
 
 ## What I learned
 

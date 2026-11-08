@@ -39,16 +39,21 @@ namespace Chess.Tests
             Assert.Equal(first.BestMove.To, second.BestMove.To);
         }
 
-        [Fact(DisplayName = "Search should explore at least 1000 nodes at depth 3 (performance smoke test)")]
-        public void Search_Should_Reach_Minimum_Node_Count()
+        // Fewer nodes for the same depth is better (it means more pruning), so this only checks that
+        // every root move is searched and that deeper searches do more work.
+        [Fact(DisplayName = "Deeper searches visit more nodes, and every root move is searched")]
+        public void Node_Count_Grows_With_Depth()
         {
             var board = new Board();
             board.LoadStartPosition();
 
-            var engine = new AlphaBetaSearch(new LegalMoveGenerator(), new MaterialEvaluator());
-            var result = engine.Analyse(board, 3);
+            var engine = new AlphaBetaSearch(new LegalMoveGenerator(), new HeuristicEvaluator());
+            long d1 = engine.Analyse(board, 1).Nodes;
+            long d2 = engine.Analyse(board, 2).Nodes;
+            long d3 = engine.Analyse(board, 3).Nodes;
 
-            Assert.True(result.Nodes > 1000, $"Expected >1000 nodes, got {result.Nodes}");
+            Assert.True(d1 >= 20, $"expected all 20 root moves searched, got {d1} nodes");
+            Assert.True(d1 < d2 && d2 < d3, $"node counts {d1}, {d2}, {d3} should grow with depth");
         }
     }
 }

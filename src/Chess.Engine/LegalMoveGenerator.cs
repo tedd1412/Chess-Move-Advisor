@@ -14,8 +14,8 @@ namespace Chess.Engine
         private static readonly int[] BishopD = { +9, +7, -7, -9 };
         private static readonly int[] RookD   = { +8, -8, +1, -1 };
 
-        // Optional flag to include or skip castling
-        public bool IncludeCastling { get; set; } = false;
+        // Castling is part of the rules, so it is on by default; the flag only exists for experiments.
+        public bool IncludeCastling { get; set; } = true;
 
         public int GenerateMoves(IBoard ib, Span<Move> buffer)
         {
@@ -175,7 +175,11 @@ namespace Chess.Engine
             {
                 int epFile = ep % 8;
                 int epRank = ep / 8;
-                if (Math.Abs(file - epFile) == 1 && epRank == rank + (p.Color == Color.White ? 1 : -1))
+                int victimSq = ep - dir; // the pawn that just made the double push
+                bool victimThere = OnBoard(victimSq)
+                    && b.GetPieceAt(victimSq) is { Type: PieceType.Pawn } v && v.Color != p.Color;
+                if (Math.Abs(file - epFile) == 1 && epRank == rank + (p.Color == Color.White ? 1 : -1)
+                    && b.GetPieceAt(ep) is null && victimThere)
                     buf[count++] = new Move(sq, ep, null, true, false, false, true);
             }
 
@@ -195,24 +199,40 @@ namespace Chess.Engine
             return count;
         }
 
+        // Castling rules: the right must still exist, king and rook on their home squares, the squares
+        // between them empty, and the king may not be in check or pass through an attacked square.
+        // (Landing in check is rejected later by the normal legality filter.)
         private static int GenerateCastlingMoves(Board b, int sq, Piece p, Span<Move> buf, int count)
         {
-            if (p.Color == Color.White)
-            {
-                if ((b.CastleRights & 1) != 0 && b.GetPieceAt(5) is null && b.GetPieceAt(6) is null)
-                    buf[count++] = new Move(sq, 6, null, false, true, false);
-                if ((b.CastleRights & 2) != 0 && b.GetPieceAt(1) is null && b.GetPieceAt(2) is null && b.GetPieceAt(3) is null)
-                    buf[count++] = new Move(sq, 2, null, false, false, true);
-            }
-            else
-            {
-                if ((b.CastleRights & 4) != 0 && b.GetPieceAt(61) is null && b.GetPieceAt(62) is null)
-                    buf[count++] = new Move(sq, 62, null, false, true, false);
-                if ((b.CastleRights & 8) != 0 && b.GetPieceAt(57) is null && b.GetPieceAt(58) is null && b.GetPieceAt(59) is null)
-                    buf[count++] = new Move(sq, 58, null, false, false, true);
-            }
+            bool white = p.Color == Color.White;
+            int home = white ? 4 : 60;
+            if (sq != home) return count;
+
+            var enemy = Opposite(p.Color);
+            if (b.IsSquareAttacked(home, enemy)) return count;
+
+            int kingSideRight = white ? Board.WhiteKingSide : Board.BlackKingSide;
+            int queenSideRight = white ? Board.WhiteQueenSide : Board.BlackQueenSide;
+
+            // King side: rook on h-file, f and g empty, f not attacked.
+            if ((b.CastleRights & kingSideRight) != 0
+                && IsOwnRook(b, home + 3, p.Color)
+                && b.GetPieceAt(home + 1) is null && b.GetPieceAt(home + 2) is null
+                && !b.IsSquareAttacked(home + 1, enemy))
+                buf[count++] = new Move(sq, home + 2, null, false, true, false);
+
+            // Queen side: rook on a-file, b, c and d empty, d not attacked.
+            if ((b.CastleRights & queenSideRight) != 0
+                && IsOwnRook(b, home - 4, p.Color)
+                && b.GetPieceAt(home - 1) is null && b.GetPieceAt(home - 2) is null && b.GetPieceAt(home - 3) is null
+                && !b.IsSquareAttacked(home - 1, enemy))
+                buf[count++] = new Move(sq, home - 2, null, false, false, true);
+
             return count;
         }
+
+        private static bool IsOwnRook(Board b, int sq, Color c) =>
+            b.GetPieceAt(sq) is { Type: PieceType.Rook } r && r.Color == c;
 
         private static bool OnBoard(int sq) => sq >= 0 && sq < 64;
         private static bool FileWrap(int a, int b) => Math.Abs((a % 8) - (b % 8)) > 1;

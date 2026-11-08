@@ -81,18 +81,19 @@ public sealed class Board : IBoard
     {
         Debug.Assert(m.From is >= 0 and < 64 && m.To is >= 0 and < 64);
         var moving = _squares[m.From];
-        var captured = m.IsEnPassant ? _squares[EpCapturedSquare(m)] : _squares[m.To];
+        var mover = SideToMove;
+        var captured = m.IsEnPassant ? _squares[EpCapturedSquare(m.To, mover)] : _squares[m.To];
 
         _history.Push(new MoveState(captured, HalfmoveClock, FullmoveNumber, SideToMove, CastleRights, EnPassantSquare));
 
         _squares[m.To] = moving;
         _squares[m.From] = null;
 
-        if (m.IsEnPassant && captured is not null)
-            _squares[EpCapturedSquare(m)] = null;
+        if (m.IsEnPassant)
+            _squares[EpCapturedSquare(m.To, mover)] = null;
 
-        if (m.IsCastleKingSide) MoveRookForCastle(true);
-        if (m.IsCastleQueenSide) MoveRookForCastle(false);
+        if (m.IsCastleKingSide) MoveRookForCastle(true, mover);
+        if (m.IsCastleQueenSide) MoveRookForCastle(false, mover);
 
         if (m.Promotion is { } promo && moving is { } p)
             _squares[m.To] = new Piece(promo, p.Color);
@@ -110,6 +111,7 @@ public sealed class Board : IBoard
     public void UnmakeMove(Move m)
     {
         var st = _history.Pop();
+        var mover = st.SideToMove; // the side that made the move being undone
 
         var moved = _squares[m.To];
 
@@ -117,14 +119,14 @@ public sealed class Board : IBoard
             moved = new Piece(PieceType.Pawn, promoted.Color);
 
         if (m.IsCastleKingSide || m.IsCastleQueenSide)
-            UnmoveRookForCastle(m.IsCastleKingSide);
+            UnmoveRookForCastle(m.IsCastleKingSide, mover);
 
         _squares[m.From] = moved;
 
-        if (m.IsEnPassant && st.Captured is not null)
+        if (m.IsEnPassant)
         {
             _squares[m.To] = null;
-            _squares[EpCapturedSquare(m)] = st.Captured;
+            _squares[EpCapturedSquare(m.To, mover)] = st.Captured;
         }
         else
         {
@@ -139,15 +141,11 @@ public sealed class Board : IBoard
     }
 
     // Helper methods (private for encapsulation).
-    private static int EpCapturedSquare(Move m)
-    {
-        int dir = m.IsWhiteMove ? -8 : +8;
-        return m.To + dir;
-    }
+    // The pawn taken en passant sits one rank behind the destination, from the mover's view.
+    private static int EpCapturedSquare(int to, Color mover) => mover == Color.White ? to - 8 : to + 8;
 
-    private void MoveRookForCastle(bool kingSide)
+    private void MoveRookForCastle(bool kingSide, Color color)
     {
-        var color = SideToMove;
         if (color == Color.White)
         {
             if (kingSide) { _squares[5] = _squares[7]; _squares[7] = null; }
@@ -160,9 +158,8 @@ public sealed class Board : IBoard
         }
     }
 
-    private void UnmoveRookForCastle(bool kingSide)
+    private void UnmoveRookForCastle(bool kingSide, Color color)
     {
-        var color = SideToMove;
         if (color == Color.White)
         {
             if (kingSide) { _squares[7] = _squares[5]; _squares[5] = null; }
@@ -235,6 +232,7 @@ public sealed class Board : IBoard
             var p = _squares[i];
             if (p is { Type: PieceType.King } && p.Value.Color == color) { kingSq = i; break; }
         }
+        if (kingSq < 0) return false; // no king on the board (test or set-up positions)
         return IsSquareAttacked(kingSq, Opp(color));
     }
 
@@ -321,12 +319,17 @@ public sealed class Board : IBoard
         HalfmoveClock = 0;
         FullmoveNumber = 1;
         SideToMove = Color.White;
-        CastleRights = 0b1111;
+        CastleRights = 0; // an empty board has no kings or rooks, so no castling rights
         EnPassantSquare = null;
     }
 
     public void SetPieceAt(int sq, Piece? piece) => _squares[sq] = piece;
-    public void SetSideToMove(Color c) => SideToMove = c;
+    public void SetSideToMove(Color c)
+    {
+        if (c == SideToMove) return;
+        SideToMove = c;
+        EnPassantSquare = null; // an en passant chance only exists for the move right after the push
+    }
 
     // Clone method (creates deep copy, loose coupling by not depending on external cloning).
     public Board Clone()

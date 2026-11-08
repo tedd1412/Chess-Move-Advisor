@@ -53,12 +53,17 @@ namespace Chess.Tests
         public void EnPassant_Should_Remove_Captured_Pawn()
         {
             var board = new Board();
-            board.LoadFen("8/8/8/3pP3/8/8/8/8 w - d6 0 2"); // White pawn e5, black pawn d5 (en passant possible)
+            const string fen = "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2"; // White pawn e5, black pawn d5 just pushed
+            board.LoadFen(fen);
 
-            var move = new Move(28, 35); // e5→d6 en passant
+            var move = new Move(36, 43, null, true, false, false, true); // e5xd6 en passant
             board.MakeMove(move);
 
-            Assert.Null(board.GetPieceAt(27)); // Captured pawn should be gone
+            Assert.Null(board.GetPieceAt(35)); // captured pawn on d5 is gone
+            Assert.Equal(new Piece(PieceType.Pawn, Color.White), board.GetPieceAt(43));
+
+            board.UnmakeMove(move);
+            Assert.Equal(fen, board.ToFen());
         }
     }
 }

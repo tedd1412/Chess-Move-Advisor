@@ -47,7 +47,7 @@ namespace Chess.UI.SplashKit
                 DrawDraggingPiece(overlay.piece, overlay.x, overlay.y);
             if (last is { BestMove: { } mv } && mv.From != mv.To && mv.From >= 0 && mv.To >= 0 && mv.From < 64 && mv.To < 64)
             {
-                DrawBestMoveArrow(mv);
+                DrawBestMoveArrow(mv, flipped);
             }
 
             DrawSidePanel(status, last, side);
@@ -63,14 +63,12 @@ namespace Chess.UI.SplashKit
             {
                 for (int f = 0; f < 8; f++)
                 {
-                    int rank = flipped ? 7 - r : r;
-                    int file = flipped ? 7 - f : f;
-                    int sq = rank * 8 + file;
+                    int sq = BoardGeometry.ToSquare(f, r, flipped);
 
                     float x = BoardX + f * Tile;
                     float y = BoardY + r * Tile;
 
-                    bool isLight = (r + f) % 2 == 0;
+                    bool isLight = BoardGeometry.IsLightSquare(sq);
                     var col = isLight ? SK.RGBColor(238, 238, 210) : SK.RGBColor(118, 150, 86);
 
                     // Highlight selection
@@ -96,13 +94,10 @@ namespace Chess.UI.SplashKit
                 var img = _assets.Get(piece.Value);
                 if (img == null) continue;
 
-                int rank = sq / 8;
-                int file = sq % 8;
-                int drawRank = flipped ? 7 - rank : rank;
-                int drawFile = flipped ? 7 - file : file;
+                var (col, row) = BoardGeometry.ToCell(sq, flipped);
 
-                float x = BoardX + drawFile * Tile;
-                float y = BoardY + drawRank * Tile;
+                float x = BoardX + col * Tile;
+                float y = BoardY + row * Tile;
                 SK.DrawBitmap(img, x, y);
             }
         }
@@ -126,8 +121,8 @@ namespace Chess.UI.SplashKit
             {
                 DrawPanelText($"Last analysis:", panelX + 10, BoardY + 80);
                 DrawPanelText($"Depth: {res.Depth}", panelX + 10, BoardY + 110);
-                DrawPanelText($"Score: {(res.ScoreCp >= 0 ? "+" : "")}{res.ScoreCp}", panelX + 10, BoardY + 140);
-                DrawPanelText($"Best move: {Sq(res.BestMove.From)}→{Sq(res.BestMove.To)}", panelX + 10, BoardY + 170);
+                DrawPanelText($"Score (side to move): {GameController.FormatScore(res)}", panelX + 10, BoardY + 140);
+                DrawPanelText(res.HasBestMove ? $"Best move: {Sq(res.BestMove.From)}→{Sq(res.BestMove.To)}" : "Best move: none (game over)", panelX + 10, BoardY + 170);
                 DrawPanelText($"Nodes: {res.Nodes}", panelX + 10, BoardY + 200);
             }
             int helpY = BoardY + 240;
@@ -143,10 +138,10 @@ namespace Chess.UI.SplashKit
             DrawPanelText("Esc: Quit", panelX + 10, helpY + 180);
         }
         // Best move arrow
-        private void DrawBestMoveArrow(Move move)
+        private void DrawBestMoveArrow(Move move, bool flipped)
         {
-            (float fx, float fy) = SquareCenter(move.From);
-            (float tx, float ty) = SquareCenter(move.To);
+            (float fx, float fy) = SquareCenter(move.From, flipped);
+            (float tx, float ty) = SquareCenter(move.To, flipped);
 
             // Draw line (arrow shaft)
             SK.DrawLine(
@@ -180,25 +175,18 @@ namespace Chess.UI.SplashKit
             if (mx >= BoardX && mx < BoardX + 8 * Tile &&
                 my >= BoardY && my < BoardY + 8 * Tile)
             {
-                int file = (int)((mx - BoardX) / Tile);
-                int rank = (int)((my - BoardY) / Tile);
-                if (flipped)
-                {
-                    file = 7 - file;
-                    rank = 7 - rank;
-                }
-                int sq = rank * 8 + file;
-                return (sq, true);
+                int col = (int)((mx - BoardX) / Tile);
+                int row = (int)((my - BoardY) / Tile);
+                return (BoardGeometry.ToSquare(col, row, flipped), true);
             }
             return (0, false);
         }
-        public static (float, float) SquareCenter(int sq)
+        public static (float, float) SquareCenter(int sq, bool flipped)
         {
             if (sq < 0 || sq >= 64) return (0, 0);
-            int f = sq % 8;
-            int r = sq / 8;
-            float x = BoardX + f * Tile + Tile / 2f;
-            float y = BoardY + r * Tile + Tile / 2f;
+            var (col, row) = BoardGeometry.ToCell(sq, flipped);
+            float x = BoardX + col * Tile + Tile / 2f;
+            float y = BoardY + row * Tile + Tile / 2f;
             return (x, y);
         }
 
@@ -234,7 +222,9 @@ namespace Chess.UI.SplashKit
 
         private void LoadAssets()
         {
-            string baseDir = "/assets/pieces";
+            // The build copies images/assets/** next to the executable, so resolve from there rather
+            // than from the drive root or the current working directory.
+            string baseDir = System.IO.Path.Combine(AppContext.BaseDirectory, "images", "assets", "pieces");
 
             string[] names =
             {
@@ -244,16 +234,15 @@ namespace Chess.UI.SplashKit
 
             foreach (string name in names)
             {
-                string path = $"{baseDir}/{name}.png";
-                try
-                {
-                    Bitmap img = SK.LoadBitmap($"piece_{name}", path);
-                    _cache[name] = img;
-                }
-                catch
+                string path = System.IO.Path.Combine(baseDir, $"{name}.png");
+                if (!System.IO.File.Exists(path))
                 {
                     Console.WriteLine($"[WARN] Missing asset: {path}");
+                    continue;
                 }
+                // No catch-all here: if the SplashKit native library is missing, that error should
+                // surface as itself, not be reported as a missing image.
+                _cache[name] = SK.LoadBitmap($"piece_{name}", path);
             }
 
         }
